@@ -1,0 +1,151 @@
+#!/bin/bash
+# This script calculates Pearson correlation coefficients.
+
+calpearson()
+{
+  # Read values from each line and store in arrays
+  cat $1|awk -F"|"  '{arrgdp[NR]=$4; arrpop[NR]=$5;arrhom[NR]=$6;arrlife[NR]=$7;arrload[NR]=$8;}
+  END{
+       num=length(arrgdp);
+	   
+	   # Initialize totals for each variable
+       for(i=1;i<=num;i++)
+       {
+            gdptotal+=arrgdp[i];
+            poptotal+=arrpop[i];
+            homtotal+=arrhom[i];
+            lifetotal+=arrlife[i];
+            loadtotal+=arrload[i];
+       }
+	   # Calculate averages for each variable
+       gdpavg=gdptotal/num;
+       popavg=poptotal/num;
+       homavg=homtotal/num;
+       lifeavg=lifetotal/num;
+       loadavg=loadtotal/num;
+       #printf("gdpavg:%f popavg:%f homavg:%f lifeavg:%f\n",gdpavg,popavg,homavg,lifeavg);  
+       
+
+       # Initialize variables for Pearson correlation calculations
+	   gdpsubtotal=0;
+       popsubtotal=0;
+       homsubtotal=0;
+       lifesubtotal=0;
+       gdpsubsqtotal=0;
+       popsubsqtotal=0;
+       homsubsqtotal=0;
+       lifesubsqtotal=0;
+       loadsubsqtotal=0;
+	   # Calculate the sums needed for the Pearson correlation formula
+       for(i=1;i<=num;i++)
+       {
+          gdpsubtotal+=(arrgdp[i]-gdpavg)*(arrload[i]-loadavg) ;
+          gdpbsubsqtotal+=(arrgdp[i]-gdpavg)*(arrgdp[i]-gdpavg);
+
+          popsubtotal+=(arrpop[i]-popavg)*(arrload[i]-loadavg);
+          popsubsqtotal+=(arrpop[i]-popavg)*(arrpop[i]-popavg);
+  
+          homsubtotal+=(arrhom[i]-homavg)*(arrload[i]-loadavg);
+          homsubsqtotal+=(arrhom[i]-homavg)*(arrhom[i]-homavg);
+
+          lifesubtotal+=(arrlife[i]-lifeavg)*(arrload[i]-loadavg);
+          lifesubsqtotal+=(arrlife[i]-lifeavg)*(arrlife[i]-lifeavg);
+          loadsubsqtotal+=(arrload[i]-loadavg)*(arrload[i]-loadavg);
+       }
+      
+       #printf("gdpsubtotal:%f popsubtotal:%f homsubtotal:%f lifesubtotal:%f\n",gdpsubtotal,popsubtotal,homsubtotal,lifesubtotal);
+       #printf("gdpbsubsqtotal:%f popsubsqtotal:%f homsubsqtotal:%f lifesubsqtotal%f loadsubsqtotal:%f\n",gdpbsubsqtotal,popsubsqtotal,homsubsqtotal,lifesubsqtotal,loadsubsqtotal);
+
+
+       # Calculate the Pearson correlation coefficients
+	   gdppearson=gdpsubtotal/(sqrt(gdpbsubsqtotal)*sqrt(loadsubsqtotal));
+       poppearson=popsubtotal/(sqrt(popsubsqtotal)*sqrt(loadsubsqtotal));
+       hompearson=homsubtotal/(sqrt(homsubsqtotal)*sqrt(loadsubsqtotal));
+       lifepearson=lifesubtotal/(sqrt(lifesubsqtotal)*sqrt(loadsubsqtotal));
+ 
+       # Print the Pearson correlation coefficients
+	   #printf("gdppearson:%f poppearson:%f hompearson:%f  lifepearson:%f\n",gdppearson,poppearson,hompearson,lifepearson);
+       printf("Mean correlation of Homicide rate with Cantril ladder is %f\n",hompearson);
+       printf("Mean correlation of GDP with Cantril ladder is %f\n",gdppearson);
+       printf("Mean correlation of Population with Cantril ladder is %f\n",poppearson);
+       printf("Mean correlation of Life Expectancy with Cantril ladder is %f\n",lifepearson);
+
+      
+       # Determine the most predictive variable
+	   maxvalue=0;
+       sstr1=""
+       if(hompearson*hompearson > maxvalue*maxvalue)
+       {
+           maxvalue=hompearson;
+           sstr1="Homicide";
+       }  
+       
+       if(poppearson*poppearson > maxvalue*maxvalue)
+       {
+           maxvalue=poppearson;
+           sstr1="Population";
+       }
+
+
+       if(gdppearson*gdppearson > maxvalue*maxvalue)
+       {
+           maxvalue=gdppearson;
+           sstr1="GDP";
+       }
+
+       if(lifepearson*lifepearson > maxvalue*maxvalue)
+       {
+           maxvalue=lifepearson;
+           sstr1="Life Expectancy"
+       }
+	   # Print the most predictive variable
+       printf("Most predictive mean correlation with the Cantril ladder is %s (r = %f)\n",sstr1,maxvalue);
+
+
+  } '
+}
+
+# Check if the script is provided with the correct number of arguments
+if [ $# -lt 1 ]
+then
+   echo "best_predictor file"
+   exit;
+fi
+
+if [ -f $1 ]
+then
+  if [ -f ./.tmppearson.txt ]
+  then
+    rm ./.tmppearson.txt
+  fi  
+  # Filter data: include only rows where all required columns are greater than 0
+  awk -F"\t" '{if(($4>0)&&($5>0)&&($6>0)&&($7>0)&&($8>0)) printf("%s|%s|%s|%s|%s|%s|%s|%s\n",$1,$2,$3,$4,$5,$6,$7,$8);}' $1 >> ./.tmppearson.txt
+
+  # Remove valid data file if it exists
+  if [ -f ./.validpearson.txt ]
+  then
+           rm ./.validpearson.txt
+  fi
+  
+  # Get valid countrys include at least 3 predictor-value, Cantril-value pairs for mean correlation calculation
+  cat ./.tmppearson.txt|awk -F"|" '{print $1"|"$2}'|sort -u|while read line
+  do
+       #echo "begin calculte country:[$line]"
+      num=`sed -n "/${line}/p" ./.tmppearson.txt|wc -l`
+      if (( num >=3))
+      then       
+         sed -n "/${line}/p" ./.tmppearson.txt  >> ./.validpearson.txt
+      fi
+  done 
+  
+  # Call the calpearson function with the valid data
+  calpearson ./.validpearson.txt
+  
+  # Remove the valid data file
+  if [ -f ./.validpearson.txt ]
+  then
+       rm ./.validpearson.txt
+  fi
+else
+  echo "file:$1 does't exists"
+fi
